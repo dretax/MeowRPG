@@ -1,4 +1,4 @@
-# Stealth-Skill by Rennnyyy
+# Poisonnade-Skill by *meow*
 #
 # Version 1.0
 
@@ -14,22 +14,30 @@ import playerlib
 import gamethread
 
 # RPG-Imports
-from rpg.rpg import playerlist
+from meowrpg import playerlist, config
+
 
 
 # Script
 skillname = 'Poisonnade'
 
 
+# Load config values
+rpgPoisonnadeValue = config.GetInt('rpgPoisonnadeValue')  
+rpgPoisonnadeInterval = config.GetFloat('rpgPoisonnadeInterval')
+
+
+# Global variables
 nades = []
 
 
+# Events
 def unload():
     gamethread.cancelDelayed('rpg_%s' %(skillname))    
 
 
 def round_start(ev):
-    gamethread.delayedname(1.0, 'rpg_%s' %(skillname), rpg_poison, ())
+    gamethread.delayedname(rpgPoisonnadeInterval, 'rpg_%s' %(skillname), rpg_poison, ())
     
     
 def round_end(ev):
@@ -72,13 +80,13 @@ def smokegrenade_detonate(ev):
           
     
 def rpg_poison():
-    gamethread.delayedname(1.0, 'rpg_%s' %(skillname), rpg_poison, ())
+    gamethread.delayedname(rpgPoisonnadeInterval, 'rpg_%s' %(skillname), rpg_poison, ())
     for i in nades:
         x = i[0]
         y = i[1]
         z = i[2]
         team = i[3]
-        damage = i[4]
+        damage = i[4] * rpgPoisonnadeValue
         if team == 2:
             for j in playerlib.getUseridList('#ct, #alive'):
                 xp, yp, zp = es.getplayerlocation(j)

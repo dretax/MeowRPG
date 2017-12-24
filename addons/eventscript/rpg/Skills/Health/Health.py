@@ -1,4 +1,4 @@
-# Health-Skill by Rennnyyy
+# Health-Skill by *meow*
 #
 # Version 1.0
 
@@ -9,37 +9,37 @@
 import es
 
 # RPG-Imports
-from rpg.rpg import playerlist
+from meowrpg import playerlist, config
+
 
 
 # Script
 skillname = 'Health'
 
 
-def load():
-    es.loadevents('declare', 'addons/eventscripts/rpg/Includes/rpg_events.res')
-    es.loadevents('addons/eventscripts/rpg/Includes/rpg_events.res') 
+# Load config values
+rpgHealthValue = config.GetInt('rpgHealthValue') 
 
 
+# Events
 def unload():
     for i in playerlist.GetPlayerlist():
-        del i.properties['maxHealth']
-        
-        
-def es_map_start(ev):
-    es.loadevents('addons/eventscripts/rpg/Includes/rpg_events.res') 
+        try:
+            del i.properties['maxHealth']
+        except:
+            pass 
 
 
-def player_spawn(ev):
+def rpg_player_spawn(ev):
     # Get player and his maximal health
     player = playerlist[ev['userid']]
-    maxHealth = 100 + player.GetSkillLevel(skillname) * 25
+    maxHealth = 100 + player.GetSkillLevel(skillname) * rpgHealthValue
     
     # Set the player's "maxhealth" property (used by medic, regeneration and shop)   
-    player.properties['maxhealth'] = maxHealth 
+    player.properties['maxHealth'] = maxHealth 
     player.player.setHealth(maxHealth)
     
 
 def rpg_skill_level_changed(ev):
     if ev['skill'] == skillname:
-        playerlist[ev['userid']].properties['maxhealth'] += (int(ev['level']) - int(ev['old_level'])) * 25
+        playerlist[ev['userid']].properties['maxHealth'] += (int(ev['level']) - int(ev['old_level'])) * rpgHealthValue

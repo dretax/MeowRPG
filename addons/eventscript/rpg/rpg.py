@@ -1,12 +1,8 @@
-# MEOW-RPG by Rennnyyy
-# 
-# Version 1.0
-
 ###################################################################################
 #                                                                                 #
-#   Do not change anything under this line (except you know what you are doing    #
+# Meow RPG by *meow*                                                              #
 #                                                                                 #
-#   To change the behaviour of this rpg, change its config (cfg/rpg)              #
+# Version 1.0.5                                                                   #
 #                                                                                 #
 ###################################################################################
 
@@ -20,6 +16,7 @@
 
 # Python includes
 import os
+import sys
 import sqlite3 
 import time
 import pickle
@@ -27,6 +24,10 @@ import base64
 import socket
 import select
 import math
+import urllib
+import urllib2
+import thread
+import calendar
 
 
 # ES includes
@@ -46,11 +47,11 @@ import gamethread
 ###############################
 
 # Version info
-version = '1.0.0'
+version = '1.0.5'
 
 # Main paths
-pluginPath = os.path.join(os.getcwd(), 'cstrike/addons/eventscripts/rpg')
-configPath = os.path.join(os.getcwd(), 'cstrike/cfg/rpg')
+pluginPath = os.path.join(os.getcwd(), 'cstrike/addons/eventscripts/meowrpg')
+configPath = os.path.join(os.getcwd(), 'cstrike/cfg/meowrpg')
 
 
 
@@ -58,32 +59,20 @@ configPath = os.path.join(os.getcwd(), 'cstrike/cfg/rpg')
 #                             #
 #   Classes                   #
 #                             #
-###############################
-
-# Log (provides a simple log writer)
-class Log(object):
-    def __init__(self, path):
-        # Create a file with the current time
-        self.log = file(os.path.join(path, time.strftime('LOG_%d-%m-%y_%H-%M-%S.txt')), 'w')
-        
-        # Delete old logs (more than 50 are not allowed)
-        logs = [i for i in os.listdir(path) if i.startswith('LOG')]
-        logs.sort(reverse=True)
-        for i in logs[50:len(logs)]:
-            os.remove(os.path.join(path, i))
-        
-        
-    def Close(self):
-        self.log.close()
-        
-        
-    def Write(self, text):
-        self.log.write('%s %s\n' %(time.strftime('[%d %B %Y @ %H:%M]'), text))
-        self.log.flush()
-        
-        
-# Config (provides a simple config reader)
+###############################       
+     
+# Language (provides a simple class for config-file reading)  
 class Config(object):
+    '''This class provides access to the configuration of Meow RPG.
+    
+    You should not create any instance of this class. A instance called "config" is available in the Meow RPG core script.
+
+    Example:
+
+    >>> from meowrpg import config
+    >>> config.GetBool('rpgHealthLoad')
+    True'''
+    
     def __init__(self, path):
         # Config values
         self.config = {}
@@ -104,28 +93,58 @@ class Config(object):
                             
                             
     def GetString(self, key):
+        '''Returns a configuration value related to the given key converted as a string. 
+        
+        You can find valid keys in the configuration files, which can be found in the folder "cstrike/cfg/meowrpg".'''
+        
         return self.config[key]
         
         
     def GetFloat(self, key):
+        '''Returns a configuration value related to the given key converted as a float. 
+        
+        You can find valid keys in the configuration files, which can be found in the folder "cstrike/cfg/meowrpg".'''
+        
         return float(self.GetString(key))
         
     
     def GetInt(self, key):
+        '''Returns a configuration value related to the given key onverted as an integer. 
+        
+        You can find valid keys in the configuration files, which can be found in the folder "cstrike/cfg/meowrpg".'''
+        
         return int(self.GetString(key))
         
     
     def GetBool(self, key):
+        '''Returns a configuration value related to the given key converted as boolean. 
+        
+        You can find valid keys in the configuration files, which can be found in the folder "cstrike/cfg/meowrpg".'''    
+        
         return bool(self.GetInt(key))
+        
+    
+    def GetList(self, key):
+        '''Returns more configuration values related to the given key converted as list.
+        
+        The configuration value related to the given key is split by the comma character (,) and all spaces are deleted. 
+        
+        You can find valid keys in the configuration files, which can be found in the folder "cstrike/cfg/meowrpg".'''
+        
+        return self.GetString(key).replace(' ', '').split(',')   
         
        
     def HasKey(self, key):
+        '''Returns True if there is a configuration value related to the given key. 
+        
+        You can find valid keys in the configuration files, which can be found in the folder "cstrike/cfg/meowrpg".'''
+        
         return key in self.config.keys()     
         
         
 # Language (provides a multi-language class)
-class Language(object):
-    def __init__(self, path):     
+class Language(object):  
+    def __init__(self, path): 
         self.tokens = {}
         self.table = {}
         
@@ -147,8 +166,7 @@ class Language(object):
                     if curTok != 'table':                        
                         self.tokens[curTok][lang] = tok 
                     else:
-                        self.table[lang] = tok
-                
+                        self.table[lang] = tok               
         f.close()
 
 
@@ -192,7 +210,7 @@ class Internet(object):
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
             self.socket.connect((socket.gethostbyname('meow-rpg.com'), 44545))  
             self.connected = True
-            es.server.queuecmd('echo "[MEOW-RPG] Connected to Master Server"')
+            es.server.queuecmd('echo "[Meow RPG] Connected to Master Server"')
         except:
             self.connected = False
             
@@ -202,7 +220,7 @@ class Internet(object):
         
     
     def RegisterServer(self): 
-        if self.connected: 
+        if self.connected and config.GetBool('rpgListServer'): 
             try:
                 self.socket.send('server_add#%s#%s' %(str(es.ServerVar('hostport')), base64.encodestring(str(es.ServerVar('hostname')))))
                 self.socket.recv(1024)
@@ -238,8 +256,9 @@ class Internet(object):
             try:
                 self.socket.send('premium_expire#%s' %(steamid.replace(':', '_')))
                 data = self.socket.recv(1024).split('#')
-                if bool(int(data[0])): 
-                    return '%s' %(data[1])
+                if bool(int(data[0])):
+                    data = data[1].split(' ') 
+                    return '%s %s %s' %(data[2], calendar.month_name[int(data[1])], data[0])
                 else:
                     return 'Expire date could not be found'
             except:
@@ -264,10 +283,33 @@ class Internet(object):
                        
     def UpdateAvailable(self):
         return self.updateAvailable, self.currentVersion
+        
+        
+    def SendRank(self, steamid, name, xp, level):
+        request = urllib2.Request(config.GetString('rpgRankURL'), urllib.urlencode([('steamid', steamid), ('name', base64.encodestring(name)), ('xp', xp), ('level', level)]))
+        url = urllib2.urlopen(request)  
+        url.close()       
                         
                         
 # Skillhandler (provides a handling for all skills)
 class Skillhandler(object):
+    '''This class provides access to all Skills of Meow RPG.
+    
+    You should not create any instance of this class. A instance called "skillhandler" is available in the Meow RPG core script.
+
+    Example:
+
+    >>> from meowrpg import skillhandler
+    >>> skillhandler.GetSkills()
+    ['Gravity', 'Health', 'Vampire']
+    >>> skillhandler.GetLoadedSkills()
+    ['Health', 'Vampire']
+    >>> skillhandler.Load('Gravity')
+    'Loaded skill: Gravity'
+    >>> skillhandler.GetLoadedSkills()
+    ['Gravity', 'Health', 'Vampire']
+    '''
+    
     def __init__(self, path):
         path = os.path.join(path)
         self.skills = {}
@@ -284,17 +326,27 @@ class Skillhandler(object):
         
         
     def LoadAll(self):
+        '''Loads all available Skills.
+        
+        You can get a list of available Skills with GetSkills().'''
+        
         for i in [i for i in self.skills.keys() if not self.skills[i]]:
             if config.GetBool('rpg%sLoad' %(i)):
-                es.server.queuecmd('es_xload rpg/Skills/%s' %(i))
+                es.server.queuecmd('es_xload meowrpg/Skills/%s' %(i))
                 self.skills[i] = True   
               
                 
     def Load(self, skill):
+        '''Loads the given Skill. 
+        
+        Returns a string with a message of success (or failure).        
+        
+        You can get a list of available Skills with GetSkills().'''
+        
         skill = skill.capitalize()
         if skill in self.skills.keys():
             if not self.skills[skill]:
-                es.server.queuecmd('es_xload rpg/Skills/%s' %(skill))
+                es.server.queuecmd('es_xload meowrpg/Skills/%s' %(skill))
                 self.skills[skill] = True  
                 
                 # We have to renew all upgrade popups!
@@ -307,16 +359,26 @@ class Skillhandler(object):
                 
     
     def UnloadAll(self):
+        '''Unloads all Skills.
+        
+        You can get a list of available Skills with GetSkills().'''
+        
         for i in [i for i in self.skills.keys() if self.skills[i]]:
-            es.server.queuecmd('es_xunload rpg/Skills/%s' %(i))
+            es.server.queuecmd('es_xunload meowrpg/Skills/%s' %(i))
             self.skills[i] = False  
             
             
     def Unload(self, skill):
+        '''Unloads the given Skill. 
+        
+        Returns a string with a message of success (or failure).
+        
+        You can get a list of available Skills with GetSkills().'''
+        
         skill = skill.capitalize()
         if skill in self.skills.keys():
             if self.skills[skill]:
-                es.server.queuecmd('es_xunload rpg/Skills/%s' %(skill))
+                es.server.queuecmd('es_xunload meowrpg/Skills/%s' %(skill))
                 self.skills[skill] = False
                 
                 # We have to renew all upgrade popups!
@@ -326,9 +388,13 @@ class Skillhandler(object):
                 return 'Unloaded skill: "%s"' %(skill) 
             return 'Skill "%s" already unloaded' %(skill)
         return 'Skill "%s" does not exist: See rpg_skills for further details' %(skill)
- 
- 
+        
+    
     def IsLoaded(self, skill):
+        '''Returns True if the given Skill is already loaded.
+        
+        You can get a list of available Skills with GetSkills().'''
+        
         try:
             return self.skills[skill.capitalize()]
         except:
@@ -336,90 +402,30 @@ class Skillhandler(object):
         
         
     def GetLoadedSkills(self):
+        '''Returns a list of all loaded Skills.
+        
+        The list is sorted ascending'''
+        
         ret = [i for i in self.skills.keys() if self.skills[i]]
         ret.sort()
         return ret
         
 
     def GetSkills(self):
+        '''Returns a list of all available Skills.
+        
+        The list is sorted ascending'''
+        
         ret = [i for i in self.skills.keys()]
         ret.sort()
         return ret
         
-        
-# Ranking Details
-class RankingDetails(object):
-    def __init__(self, steamid, name, xp, level):
-        self.steamid = steamid
-        self.name = name  
-        self.xp = xp
-        self.level = level
-            
-            
-    def Update(self, name, xp, level):   
-        self.name = name  
-        self.xp = xp
-        self.level = level 
-        
 
-# Ranking (provides saving and displaying the ranking of all players)
-class Ranking(object):   
-    def __init__(self, path):
-        self.path = path
-       
-        self.ranking = {}
-        
-        self.currentRank = []
-
-        # Try to load the old ranking
-        try:
-            self.Load()
-        except:
-            pass 
-            
-            
-    def Load(self):
-        # Load ranking from the pickled file
-        f = file(self.path)
-        self.ranking = pickle.load(f)
-        f.close()   
-        
-        self.Update()
-        
-        
-    def Store(self):
-        # Store current ranking in a pickled file
-        f = file(self.path, 'w')      
-        pickle.dump(self.ranking, f)       
-        f.close()    
-        
-        
-    def UpdatePlayer(self, steamid, name, xp, level):
-        # Update a existing player or create a new one
-        try:
-            self.ranking[steamid].Update(name, xp, level)
-        except:
-            self.ranking[steamid] = RankingDetails(steamid, name, xp, level)
-
-
-    def DeletePlayer(self, steamid):
-        del self.ranking[steamid]
-        
-        
-    def Update(self):
-        # Update the whole current ranking
-        self.currentRanking = sorted(self.ranking.values(), key=lambda tmp: tmp.xp, reverse=True)
-        
-
+# Ranking (provides displaying the ranking of all players)
+class Ranking(object):               
     # Getters
     def GetPlace(self, steamid):
-        for i in xrange(len(self.currentRanking)):
-            if self.currentRanking[i].steamid == steamid:
-                return i+1    
-       
-                
-    def GetDetails(self, place):
-        return self.currentRanking[place-1] 
+        return saving.GetPlace(steamid)
         
 
     # Send the popup
@@ -427,13 +433,13 @@ class Ranking(object):
         if popuplib.exists('rpg_record'):
             popuplib.delete('rpg_record')
         popup = popuplib.create('rpg_record')
-        popup.addline('[MEOW-RPG] Top 10')
-        for i in range(10):
-            try:
-                details = self.currentRanking[i]
-                popup.addline('%s. %s - %s XP' %(i+1, details.name, details.xp))
-            except:
-                popup.addline('%s. Empty - 0 XP' %(i+1))  
+        popup.addline('[Meow RPG] Top 10')
+        for i in xrange(1,11):
+            data = saving.GetRank(i)
+            if data != None:
+                popup.addline('%s. %s - %s XP' %(i, data[0], data[1]))
+            else:
+                popup.addline('%s. Empty - 0 XP' %(i))  
         popup.addline('->0. Exit')
         popup.send(userid)    
     
@@ -621,12 +627,13 @@ class MainPopup(object):
     
         # Create new popup
         self.popup = popuplib.create(self.popupname)
-        self.popup.addline('[MEOW-RPG] Main')
+        self.popup.addline('[Meow RPG] %s' %(language.GetLanguage('main', self.language)))
         self.popup.addline('->1. %s' %(language.GetLanguage('upgrade', self.language)))  
         self.popup.addline('->2. %s' %(language.GetLanguage('sell', self.language)))  
         self.popup.addline('->3. %s' %(language.GetLanguage('statistic', self.language)))  
         self.popup.addline('->4. %s' %(language.GetLanguage('settings', self.language)))  
-        self.popup.addline('->5. %s' %(language.GetLanguage('information', self.language)))   
+        self.popup.addline('->5. %s' %(language.GetLanguage('information', self.language)))
+        self.popup.addline('->6. %s' %(language.GetLanguage('help', self.language)))   
         self.popup.addline('->0. %s' %(language.GetLanguage('exit', self.language)))            
         self.popup.menuselect = self.Menuselect
         
@@ -642,7 +649,7 @@ class MainPopup(object):
         
     def Menuselect(self, userid, choice, id):
         # No options on this choice -> resend
-        if choice in (6,7,8,9):
+        if choice in (7,8,9):
             self.Send()
         # If choice was not exit -> send the next popup
         elif choice != 10:
@@ -655,7 +662,9 @@ class MainPopup(object):
             elif choice == 4:
                 self.player.settingsPopup.Send()  
             elif choice == 5:
-                self.player.infoPopup.Send()       
+                self.player.infoPopup.Send()  
+            elif choice == 6:
+                self.player.helpPopup.Send()     
                 
                 
     def Delete(self):
@@ -698,12 +707,15 @@ class UpgradePopup(object):
             self.language = self.player.language         
          
         # Create new popup     
-        self.popup = MultiPopup(self.language, self.popupname, ('[MEOW-RPG] %s' %(language.GetLanguage('upgrade', self.language)), language.GetLanguage('current_credits', self.language, {'credits' : self.player.GetCredits()})), self.Menuselect) 
+        self.popup = MultiPopup(self.language, self.popupname, ('[Meow RPG] %s' %(language.GetLanguage('upgrade', self.language)), language.GetLanguage('current_credits', self.language, {'credits' : self.player.GetCredits()})), self.Menuselect) 
   
         for i in skillhandler.GetLoadedSkills():
             if not self.player.IsSkillMax(i):
-                self.popup.AddOption(language.GetLanguage('upgrade_level', self.language, {'skill' : i, 'level' : self.player.GetSkillLevel(i) + 1, 'cost' : self.player.GetSkillCredits(i)}), i, self.player.HasSkillCredits(i))
-        
+                level = self.player.GetSkillLevel(i) + 1
+                if config.GetInt('rpg%sMax' %(i)) == level:  
+                    self.popup.AddOption(language.GetLanguage('upgrade_level_max', self.language, {'skill' : i, 'level' : level, 'cost' : self.player.GetSkillCredits(i)}), i, self.player.HasSkillCredits(i))
+                else:
+                    self.popup.AddOption(language.GetLanguage('upgrade_level', self.language, {'skill' : i, 'level' : level, 'cost' : self.player.GetSkillCredits(i)}), i, self.player.HasSkillCredits(i))                         
         self.renew = False
          
         
@@ -769,7 +781,7 @@ class SellPopup(object):
             self.language = self.player.language         
         
         # Create new popup     
-        self.popup = MultiPopup(self.language, self.popupname, ('[MEOW-RPG] %s' %(language.GetLanguage('sell', self.language)),  language.GetLanguage('current_credits', self.language, {'credits' : self.player.GetCredits()})), self.Menuselect) 
+        self.popup = MultiPopup(self.language, self.popupname, ('[Meow RPG] %s' %(language.GetLanguage('sell', self.language)),  language.GetLanguage('current_credits', self.language, {'credits' : self.player.GetCredits()})), self.Menuselect) 
         
         for i in self.player.GetSkills():
             self.popup.AddOption(language.GetLanguage('sell_level', self.language, {'skill' : i, 'level' : self.player.GetSkillLevel(i, False), 'cost' : self.player.GetSkillSellCredits(i)}), i)    
@@ -838,11 +850,11 @@ class StatisticPopup(object):
     
         # Create new popup
         self.popup = popuplib.create(self.popupname)
-        self.popup.addline('[MEOW-RPG] %s' %(language.GetLanguage('statistic', self.language)))
-        self.popup.addline('Level: %s' %(self.player.GetLevel()))
-        self.popup.addline('XP Status: %s/%s' %(self.player.xp, self.player.nextLevelXP))
-        self.popup.addline('Credits: %s' %(self.player.GetCredits()))
-        self.popup.addline('Total XP: %s' %(self.player.GetTotalXP()))
+        self.popup.addline('[Meow RPG] %s' %(language.GetLanguage('statistic', self.language)))
+        self.popup.addline(language.GetLanguage('level', self.language, {'level' : self.player.GetLevel()}))
+        self.popup.addline(language.GetLanguage('xp_status', self.language, {'currentXP' : self.player.xp, 'nextXP' : self.player.nextLevelXP}))
+        self.popup.addline(language.GetLanguage('credits', self.language, {'credits' : self.player.GetCredits()}))
+        self.popup.addline(language.GetLanguage('total_xp', self.language, {'totalXP' : self.player.GetTotalXP()}))
         if config.GetBool('rpgPremium'):
             if self.player.premium:
                 self.popup.addline('Premium: %s' %(self.player.premiumExpire))
@@ -915,7 +927,7 @@ class SettingsPopup(object):
             self.language = self.player.language
             
         self.popup = popuplib.create(self.popupname) 
-        self.popup.addline('[MEOW-RPG] %s' %(language.GetLanguage('settings', self.language)))
+        self.popup.addline('[Meow RPG] %s' %(language.GetLanguage('settings', self.language)))
         if self.player.GetAutomaticPopupClose():
             self.popup.addline('->1. %s' %(language.GetLanguage('turn_popup_close_off', self.language)))
         else:
@@ -993,7 +1005,7 @@ class LanguagePopup(object):
         if self.language != self.player.language:
             self.language = self.player.language
             
-        self.popup = MultiPopup(self.language, self.popupname, ('[MEOW-RPG] %s' %(language.GetLanguage('language_headline', self.language)),  language.GetLanguage('language_current', self.language, {'language' : language.GetLanguageByShortcut(self.language)})), self.Menuselect) 
+        self.popup = MultiPopup(self.language, self.popupname, ('[Meow RPG] %s' %(language.GetLanguage('language_headline', self.language)),  language.GetLanguage('language_current', self.language, {'language' : language.GetLanguageByShortcut(self.language)})), self.Menuselect) 
         
         for i in language.GetAllLanguages():
             self.popup.AddOption(language.GetLanguageByShortcut(i), i)    
@@ -1054,13 +1066,96 @@ class InfoPopup(object):
         except:
             pass
             
+        # Check language
+        if self.language != self.player.language:
+            self.language = self.player.language
+            
         self.popup = popuplib.create(self.popupname)
-        self.popup.addline('[MEOW-RPG] %s' %(language.GetLanguage('information', self.language))) 
+        self.popup.addline('[Meow RPG] %s' %(language.GetLanguage('information', self.language)))
+        self.popup.addline('->1. %s' %(language.GetLanguage('skill_info', self.language)))  
+        if config.GetBool('rpgPremium'):
+            self.popup.addline('->2. %s' %(language.GetLanguage('premium_info', self.language)))       
         self.popup.addline('->Version: %s' %(version)) 
-        self.popup.addline('->Scripter: Rennnyyy')
+        self.popup.addline('->Scripter: *meow*')
         self.popup.addline('->Thanks to: DreTax, H4v0c, BackRaw')
         self.popup.addline('->HP: www.meow-rpg.com')
-        self.popup.addline('->%s: www.forum.meow-rpg.com' %(language.GetLanguage('bug_report', self.language)))
+    #    self.popup.addline('->%s: www.forum.meow-rpg.com' %(language.GetLanguage('bug_report', self.language)))     
+        self.popup.addline('->8. %s' %(language.GetLanguage('back', self.language)))
+        self.popup.addline('->0. %s' %(language.GetLanguage('exit', self.language)))
+        self.popup.menuselect = self.Menuselect
+       
+        
+    def Send(self):
+        if self.renew:
+            self.CreatePopup()
+        self.popup.send(self.userid)  
+        
+        
+    def Menuselect(self, userid, choice, id):
+        if choice == 1:
+            usermsg.motd(userid, 2, 'Meow RPG Skills', 'http://meow-rpg.com/en/skills.html')
+        elif choice == 2 and config.GetBool('rpgPremium'):
+            usermsg.motd(userid, 2, 'Meow RPG Premium', 'http://meow-rpg.com/en/premium.php')  
+        elif choice != 8 and choice != 10:
+            self.Send()
+        elif choice == 8:
+            self.player.mainPopup.Send()      
+        
+            
+    def Delete(self):
+        # Delete the popups
+        try:
+            self.popup.menuselect = None
+            self.popup.delete()
+            if popuplib.exists(self.popupname):
+                popuplib.delete(self.popupname) 
+        except:
+            pass
+            
+            
+# HelpPopup (the help popup)           
+class HelpPopup(object):
+    def __init__(self, player):
+        self.player = player
+        self.userid = player.userid
+        self.language = player.language 
+        
+        self.popupname = '%s_rpg_help' %(self.userid)
+        
+        self.renew = True
+        
+        self.CreatePopup(True)
+        
+    def Renew(self):
+        if not self.renew:
+            self.renew = True
+        
+        
+    def CreatePopup(self, first=False):  
+        # Delete old popups
+        try:
+            if not first:
+                self.popup.menuselect = None
+                self.popup.delete()
+            if popuplib.exists(self.popupname):
+                popuplib.delete(self.popupname)
+        except:
+            pass
+            
+        # Check language
+        if self.language != self.player.language:
+            self.language = self.player.language
+            
+        self.popup = popuplib.create(self.popupname)
+        self.popup.addline('[Meow RPG] %s' %(language.GetLanguage('help', self.language)))
+        
+        self.popup.addline('%s - %s' %(', '.join(config.GetList('rpgSayMainMenu')), language.GetLanguage('main_menu_info', self.language)))
+        self.popup.addline('%s - %s' %(', '.join(config.GetList('rpgSayRankMenu')), language.GetLanguage('rank_menu_info', self.language)))
+        self.popup.addline('%s - %s' %(', '.join(config.GetList('rpgSayRankOwn')), language.GetLanguage('rank_own_info', self.language)))
+        self.popup.addline('%s - %s' %(', '.join(config.GetList('rpgSayInfoMenu')), language.GetLanguage('info_menu_info', self.language)))
+        self.popup.addline('%s - %s' %(', '.join(config.GetList('rpgSaySettingsMenu')), language.GetLanguage('settings_menu_info', self.language)))
+        self.popup.addline('%s - %s' %(', '.join(config.GetList('rpgSayFastXP')), language.GetLanguage('xp_menu_info', self.language)))
+        
         self.popup.addline('->8. %s' %(language.GetLanguage('back', self.language)))
         self.popup.addline('->0. %s' %(language.GetLanguage('exit', self.language)))
         self.popup.menuselect = self.Menuselect
@@ -1087,10 +1182,10 @@ class InfoPopup(object):
             if popuplib.exists(self.popupname):
                 popuplib.delete(self.popupname) 
         except:
-            pass 
+            pass  
             
             
-# InfoPopup (the info popup)           
+# AdminPopup (the admin popup)           
 class AdminPopup(object):
     def __init__(self): 
         self.choices = {}
@@ -1103,7 +1198,7 @@ class AdminPopup(object):
             pass
             
         self.basicPopup = popuplib.create('rpg_admin_basic') 
-        self.basicPopup.addline('[MEOW-RPG] Admin') 
+        self.basicPopup.addline('[Meow RPG] Admin') 
         self.basicPopup.addline('What do you want to do?')
         self.basicPopup.addline('->1. Give XP')
         self.basicPopup.addline('->2. Give Level')
@@ -1112,15 +1207,15 @@ class AdminPopup(object):
         self.basicPopup.addline('->0. Exit')
         self.basicPopup.menuselect = self.MenuselectBasic
         
-        self.xpAmountPopup = MultiPopup('en', 'rpg_admin_amount', ('[MEOW-RPG] Admin', 'Select an amount of XP'), self.MenuselectAmount) 
+        self.xpAmountPopup = MultiPopup('en', 'rpg_admin_amount', ('[aiuto] Admin', 'Select an amount of XP'), self.MenuselectAmount) 
         for i in (100,500,1000,2000,5000,10000,50000,100000,500000):
             self.xpAmountPopup.AddOption(str(i), i)
             
-        self.levelAmountPopup = MultiPopup('en', 'rpg_admin_amount', ('[MEOW-RPG] Admin', 'Select an amount of Level'), self.MenuselectAmount) 
+        self.levelAmountPopup = MultiPopup('en', 'rpg_admin_amount', ('[Meow RPG] Admin', 'Select an amount of Level'), self.MenuselectAmount) 
         for i in (1,5,10,15,20,25,50,100,500):
             self.levelAmountPopup.AddOption(str(i), i)
             
-        self.creditsAmountPopup = MultiPopup('en', 'rpg_admin_amount', ('[MEOW-RPG] Admin', 'Select an amount of Credits'), self.MenuselectAmount) 
+        self.creditsAmountPopup = MultiPopup('en', 'rpg_admin_amount', ('[Meow RPG] Admin', 'Select an amount of Credits'), self.MenuselectAmount) 
         for i in (1,5,10,15,20,25,50,100,500):
             self.creditsAmountPopup.AddOption(str(i), i)
      
@@ -1132,7 +1227,7 @@ class AdminPopup(object):
         except:
             pass
             
-        popup = MultiPopup('en', 'rpg_admin_player', ('[MEOW-RPG] Admin', 'Select a Player'), self.MenuselectPlayer)
+        popup = MultiPopup('en', 'rpg_admin_player', ('[Meow RPG] Admin', 'Select a Player'), self.MenuselectPlayer)
         for i in playerlist.GetPlayerlist():
             popup.AddOption(es.getplayername(i.userid), i) 
         self.playerPopups[userid] = popup 
@@ -1234,33 +1329,83 @@ class AdminPopup(object):
            
             
 # Saving class (provides saving of a player via SQL)
-class Saving(object):
+class Saving(object):     
     def __init__(self, path):   
         # Check if there is a database
         exist = os.path.exists(path)
         
         # Open connection and cursor
         self.connection = sqlite3.connect(path)
+        self.connection.text_factory = str
         self.cursor = self.connection.cursor()
         
-        # Create new tabe, if the database was created
+        # Create new table, if the database was created
         if not exist:
-            self.Execute('''CREATE TABLE rpg_version_1_0_0  
-                           (steamid text, xp text, totalxp text, level text, credits text, language text, automaticPopupClose text, skills text)''')
+            self.Execute('''CREATE TABLE rpg_version_1_0_1  
+                           (steamid text, name text, xp int, totalxp int, level int, credits int, rank int, language text, automaticPopupClose text, skills text)''')
             self.connection.commit()
+        else:
+            # Check if an old version exists
+            try:
+                data = self.Execute('SELECT * FROM rpg_version_1_0_0')
+                # Success - there is till an old table, let's convert it
+                dbg('Converting database from version 1.0.0 to 1.0.1 ...')     
+            
+                # Changings from 1_0_0 to 1_0_1:
+                # - name is not saved as converted unicode string, but as base64 string            
+                tmp = []
+                for i in data:
+                    tmp.append((i[0], base64.encodestring(i[1]), i[2], i[3], i[4], i[5], i[6], i[7], i[8], i[9]))
+                    
+                # Create the 1_0_1 table
+                self.Execute('''CREATE TABLE rpg_version_1_0_1  
+                               (steamid text, name text, xp int, totalxp int, level int, credits int, rank int, language text, automaticPopupClose text, skills text)''')                
+
+                # Add new data
+                for i in tmp:
+                    self.Execute('INSERT INTO rpg_version_1_0_1 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', i)
+                self.connection.commit()  
+            
+                # Drop the old table
+                self.Execute('DROP TABLE rpg_version_1_0_0')  
+                self.connection.commit()
+                
+                # Debug the rank (if it has lacks maybe)
+                self.Debug()
+               
+                dbg('Success: Database is now on version 1.0.1')              
+            except:
+                pass
 
         
     def Close(self):
         for i in playerlist.GetPlayerlist():
-            self.Store(i)
+            self.Store(i) 
     
         self.connection.commit()
         self.connection.close()
-                
+        
+        
+    def Commit(self):
+        self.connection.commit() 
+        
+    
+    def Debug(self):
+        # A debugging method
+        # We fix the ranking, because it maybe is wrong
+        data = self.Execute('SELECT steamid FROM rpg_version_1_0_1 ORDER BY totalxp DESC')
+        cnt = 1
+        tmp = []
+        for i in data:
+            tmp.append(str(i[0]))          
+        for i in tmp:  
+            self.Execute('UPDATE rpg_version_1_0_1 SET rank = ? WHERE steamid = ?', (cnt,i))
+            cnt += 1   
+      
        
     def Load(self, player):
         # Get the data from the database
-        data = self.Execute('SELECT * FROM rpg_version_1_0_0 WHERE steamid = ?', (player.steamid,)) 
+        data = self.Execute('SELECT * FROM rpg_version_1_0_1 WHERE steamid = ?', (player.steamid,)) 
         
         # Did we found one?
         found = False
@@ -1269,15 +1414,15 @@ class Saving(object):
         for i in data:
         
             # XP, Level, Credits, Language and PopupClose are always at the beginning            
-            player.xp = int(i[1])
-            player.totalxp = int(i[2])
-            player.level = int(i[3])
-            player.credits = int(i[4])
-            player.language = str(i[5])
-            player.automaticPopupClose = bool(int(i[6]))
+            player.xp = int(i[2])
+            player.totalxp = int(i[3])
+            player.level = int(i[4])
+            player.credits = int(i[5])
+            player.language = str(i[7])
+            player.automaticPopupClose = bool(int(i[8]))
             
             # Split the skill levels
-            skills = str(i[7]).split(',')
+            skills = str(i[9]).split(',')
             for j in skills:
                 tmp = j.split('=')
                 player.skills[str(tmp[0])] = int(tmp[1]) 
@@ -1288,7 +1433,10 @@ class Saving(object):
             
         # Not found
         if not found:
-            self.Execute('INSERT INTO rpg_version_1_0_0 VALUES (?, ?, ?, ?, ?, ?, ?, "")', (player.steamid, player.xp, player.totalxp, player.level, player.credits, player.language, int(player.automaticPopupClose)))
+            # Get the rank of this player
+            rank = int(self.Execute('SELECT COUNT(*) FROM rpg_version_1_0_1 WHERE totalxp >= ?', (player.totalxp,)).next()[0]) + 1
+            self.Execute('UPDATE rpg_version_1_0_1 SET rank = rank + 1 WHERE rank >= ?', (rank,))    
+            self.Execute('INSERT INTO rpg_version_1_0_1 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "")', (player.steamid, base64.encodestring(player.name), player.xp, player.totalxp, player.level, player.credits, rank, player.language, int(player.automaticPopupClose)))
             
         # Call the Loaded function of the player
         player.Loaded()
@@ -1300,14 +1448,43 @@ class Saving(object):
         for i in player.skills:
             tmp.append('%s=%s' %(i, player.skills[i]))
         skills = ','.join(tmp)
-                
-        # Store the data    
-        self.Execute('UPDATE rpg_version_1_0_0 SET xp=?, totalxp=?, level=?, credits=?, language=?, automaticPopupClose=?, skills=? WHERE steamid=?', (player.xp, player.totalxp, player.level, player.credits, player.language, int(player.automaticPopupClose), skills, player.steamid))
-        self.connection.commit() 
         
+        steamid = player.steamid
+        totalxp = player.totalxp
+        
+        data = self.Execute('SELECT rank, totalxp FROM rpg_version_1_0_1 WHERE steamid = ?', (steamid,)).next()
+        oldrank = int(data[0])
+        oldtotalxp = int(data[1])
+        if oldtotalxp < totalxp:
+            moved = self.Execute('UPDATE rpg_version_1_0_1 SET rank = rank + 1 WHERE rank < ? AND totalxp < ?', (oldrank, totalxp)).rowcount
+            self.Execute('UPDATE rpg_version_1_0_1 SET name=?, xp=?, totalxp=?, level=?, credits=?, rank=rank-?, language=?, automaticPopupClose=?, skills=? WHERE steamid=?', (base64.encodestring(player.name), player.xp, totalxp, player.level, player.credits, moved, player.language, int(player.automaticPopupClose), skills, steamid))
+        elif oldtotalxp > totalxp:
+            moved = self.Execute('UPDATE rpg_version_1_0_1 SET rank = rank - 1 WHERE rank > ? AND totalxp > ?', (oldrank, totalxp)).rowcount
+            self.Execute('UPDATE rpg_version_1_0_1 SET name=?, xp=?, totalxp=?, level=?, credits=?, rank=rank+?, language=?, automaticPopupClose=?, skills=? WHERE steamid=?', (base64.encodestring(player.name), player.xp, totalxp, player.level, player.credits, moved, player.language, int(player.automaticPopupClose), skills, steamid))
+        else:
+            self.Execute('UPDATE rpg_version_1_0_1 SET name=?, xp=?, totalxp=?, level=?, credits=?, language=?, automaticPopupClose=?, skills=? WHERE steamid=?', (base64.encodestring(player.name), player.xp, totalxp, player.level, player.credits, player.language, int(player.automaticPopupClose), skills, steamid))    
+               
+
+    def GetPlace(self, steamid):
+        # Get a place of the player with this steamid        
+        data = self.Execute('SELECT rank, totalxp, level, name FROM rpg_version_1_0_1 WHERE steamid = ?', (steamid,))
+        for i in data:
+            return int(i[0]), int(i[1]), int(i[2]), str(i[3])
+            
+    
+    def GetRank(self, place):
+        # Get ranking details of the player with this place    
+        data = self.Execute('SELECT name, totalxp, level FROM rpg_version_1_0_1 WHERE rank = ?', (place,))
+        for i in data:
+            try:
+                return base64.decodestring(str(i[0])), int(i[1]), int(i[2])  
+            except:
+                return None
+        return None     
+                
         
     def Execute(self, command, args = ()):
-        # Call without arguments
+        # Call without arguments    
         if args == ():
             return self.cursor.execute(command)
         # Call with arguments
@@ -1317,8 +1494,39 @@ class Saving(object):
             
 # Player (provides a class for handling the player's attributes)  
 class Player(object): 
+    '''This class provides access to every player (and his achievements).
+    
+    You should not create any instance of this class. You can access instances related to a player with using the Playerlist class.
+
+    Example:
+
+    >>> from meowrpg import playerlist
+    >>> player = playerlist[5] # This is a instance of the Player class which contains information about the player with userid 5
+    >>> player.GetSkillLevel('Health')
+    7
+    >>> player.GetLevel()
+    123'''
+
     # Internal class for properties
-    class Properties(dict, object):        
+    class Properties(dict, object):   
+        '''This class provides access to player specific properties.
+        
+        You should not create any instance of this class. You can access instances related to a player with using the properties variable in a Player class instance.
+        
+        The class is designed to share information between different skills (like color of the player).
+        
+        You can define default properties in the Properties.res file, which can be found at "cstrike/addons/eventscripts/meowrpg/Includes". 
+        
+        Example:
+        
+        >>> from meowrpg import playerlist
+        >>> player = playerlist[5] # This is a instance of the Player class which contains information about the player with userid 5
+        >>> player.properties['color']
+        [255, 255, 255, 255]
+        >>> player.properties['armor'] = 123
+        >>> player.properties['armor']
+        123'''     
+        
         # Static defaults
         defaultProperties = {}
         
@@ -1333,7 +1541,7 @@ class Player(object):
                     line = line.split('=')
                     if len(line) == 2:
                         if ',' in line[1]:
-                            Player.Properties.defaultProperties[line[0]] = [int(i) for i in line[1].split(',')]
+                            Player.Properties.defaultProperties[line[0]] = tuple([int(i) for i in line[1].split(',')])
                         else:
                             try:
                                 Player.Properties.defaultProperties[line[0]] = int(line[1])
@@ -1341,14 +1549,26 @@ class Player(object):
                                 Player.Properties.defaultProperties[line[0]] = line[1] 
         # Static
         Load = staticmethod(Load)
+          
+        
+        def __setitem__(self, key, value):
+            '''Store a property from a player related to the given key.
             
+            You can define default properties in the Properties.res file, which can be found at "cstrike/addons/eventscripts/meowrpg/Includes".'''
+            
+            dict.__setitem__(self, key, value) 
+          
     
         def __getitem__(self, key):
+            '''Returns a property of a player related to the given key.
+            
+            You can find default properties in the Properties.res file, which can be found at "cstrike/addons/eventscripts/meowrpg/Includes".'''
+            
             if key in self.keys():
                 return dict.__getitem__(self, key)
             else:
                 try:
-                    return Properties.defaultProperties[key]
+                    return Player.Properties.defaultProperties[key]
                 except:
                     return None
     
@@ -1359,8 +1579,9 @@ class Player(object):
     def __init__(self, userid):
         # Some settings 
         self.userid = userid
+        self.name = es.getplayername(self.userid)
         self.player = playerlib.getPlayer(self.userid) 
-        self.steamid = es.getplayersteamid(self.userid)
+        self.steamid = es.getplayersteamid(self.userid)      
         
         self.premium = internet.IsPremium(self.steamid) and config.GetBool('rpgPremium')
         if self.premium:
@@ -1402,6 +1623,7 @@ class Player(object):
         self.settingsPopup = SettingsPopup(self)
         self.languagePopup = LanguagePopup(self)
         self.infoPopup = InfoPopup(self)
+        self.helpPopup = HelpPopup(self)
         
     
     def Delete(self):
@@ -1412,6 +1634,7 @@ class Player(object):
         self.settingsPopup.Delete()
         self.languagePopup.Delete()
         self.infoPopup.Delete()
+        self.helpPopup.Delete()
         
   
     # Calculate the credits for a skill  
@@ -1430,18 +1653,22 @@ class Player(object):
     
     # Getters  
     def GetNextLevelXP(self):
+        '''Returns the amount of xp needed for the next levelup (as integer).'''
         return self.nextLevelXP
     
     
     def GetTotalXP(self):
+        '''Returns the total amount of xp a player gained since playing or resetting (as integer).'''
         return self.totalxp
         
     
     def GetLevel(self):
+        '''Returns the current level of a player (as integer).'''
         return self.level
         
         
     def GetCredits(self):
+        '''Returns the current amount of credits of a player (as integer).'''
         return self.credits
     
          
@@ -1450,7 +1677,12 @@ class Player(object):
         
         
     def GetSkillLevel(self, skill, checkMax=True):
-        # If the skill is not listed, we add it with level 0
+        '''Returns the current level of the given Skill of a player (as integer).
+
+        Set checkMax to True, if you want to no more than the maximum level defined in the configuration file. Only change that, if you are sure what you are doing! 
+        
+        As a result of changing the configuration a player can have at least a higher level in a skill than the maximum level of this skill.'''
+        
         try:
             if checkMax:
                 max = config.GetInt('rpg%sMax' %(skill))
@@ -1465,17 +1697,28 @@ class Player(object):
         
         
     def GetSkillCredits(self, skill):
+        '''Returns the amount of credits needed for the next level of given Skill (as integer).''' 
+        
         return self.skillCredits[skill]
         
         
     def GetSkillSellCredits(self, skill):
+        '''Returns the amount of credits a player recieves when selling a level of the given Skill (as integer).''' 
+        
         return self.skillCredits['%s_sell' %(skill)]
         
         
     def GetSkills(self):
+        '''Returns a list of Skills, whose level is higher than 0.
+        
+        The list ist sorted ascending.'''
+        
         ret = [i for i in self.skills.keys() if self.skills[i] > 0]
         ret.sort()
         return ret 
+        
+    def GetLanguage(self):
+        return self.language
         
                
     # Setter
@@ -1495,14 +1738,19 @@ class Player(object):
         self.settingsPopup.Renew() 
         self.languagePopup.Renew()
         self.infoPopup.Renew()
+        self.helpPopup.Renew()
     
 
     # Raise      
-    def RaiseXP(self, xp, noPremium = False):
+    def RaiseXP(self, amount, noPremium = False):
+        '''Adds the given amount to the player's xp.
+        
+        If you set noPremium to False the amount is doubled, if a player is a premium player.'''
+        
         if not noPremium:
-            xp *= self.premiumAmount 
-        self.xp += xp
-        self.totalxp += xp
+            amount *= self.premiumAmount 
+        self.xp += amount
+        self.totalxp += amount
         while True:
             if self.xp >= self.nextLevelXP:
                 self.level += 1
@@ -1517,13 +1765,17 @@ class Player(object):
         self.statisticPopup.Renew()  
           
  
-    def RaiseLevel(self, level):               
-        for i in xrange(level):
+    def RaiseLevel(self, amount):    
+        '''Adds the given amount to the players's level.'''
+                     
+        for i in xrange(amount):
             self.RaiseXP(self.nextLevelXP, True)
             
             
-    def RaiseCredits(self, credits):
-        self.credits += credits
+    def RaiseCredits(self, amount):
+        '''Adds the given amount to the player's credits.'''
+        
+        self.credits += amount
         self.upgradePopup.Renew()
         self.sellPopup.Renew()
         self.statisticPopup.Renew() 
@@ -1553,6 +1805,8 @@ class Player(object):
     
     # Popup functions
     def IsSkillMax(self, skill):
+        '''Returns True if the given Skill is on it's maximum level, otherwise returns False.'''  
+        
         return self.GetSkillLevel(skill) >= config.GetInt('rpg%sMax' %(skill)) 
         
         
@@ -1586,6 +1840,10 @@ class Player(object):
  
     #Reset
     def Reset(self):
+        '''Resets the whole achievements of a player (xp, level, Skills and credits). 
+
+        Handle with care!'''
+        
         # Reset the savings
         self.xp = 0
         self.totalxp = 0
@@ -1620,27 +1878,44 @@ class Player(object):
         
 # Playerlist (provides a list with all current players on the server)
 class Playerlist(object):
+    '''This class provides access to all players which are currently online.
+    
+    You should not create any instance of this class. A instance called "playerlist" is available in the Meow RPG core script.
+
+    Example:
+
+    >>> from meowrpg import playerlist
+    >>> player = playerlist[5] # This is a instance of the Player class which contains information about the player with userid 5'''
+    
     def __init__(self):
-        self.players = {}   
+        self.players = {} 
+        self.added = set()  
         
     def Add(self, userid):
         userid = int(userid)
         player = Player(userid) 
         self.players[userid] = player 
         saving.Load(player)
+        self.added.add(userid)
         
     def Remove(self, userid):
-        player = self.players[int(userid)]  
+        userid = int(userid)
+        self.added.remove(userid)
+        player = self.players[userid]  
         saving.Store(player)
         player.Delete()
-        del self.players[int(userid)]
+        del self.players[userid]
         
     def Clear(self):
         for i in self.players.keys():
             self.Remove(i)
+    
+    def Exists(self, userid):
+        return int(userid) in self.added
         
-    def __getitem__(self, key):
-        return self.players[int(key)]
+    def __getitem__(self, userid):
+        '''Returns a instance of the Player class related to the given userid.'''
+        return self.players[int(userid)]
         
     def GetPlayerlist(self):
         return self.players.values()
@@ -1652,14 +1927,13 @@ class Eventhandler(object):
         self.xpGaining = {}
         self.levelGaining = {}
         
-        self.saveMod = 0       
+        self.advertiseCounter = 0       
         
         
     def OnPlayerDisconnect(self, ev): 
         # Add the player to the ranking
         userid = int(ev['userid'])
         player = playerlist[userid]
-        ranking.UpdatePlayer(player.steamid, es.getplayername(userid), player.GetTotalXP(), player.GetLevel()) 
         
         try:
             del self.xpGaining[userid]
@@ -1677,7 +1951,9 @@ class Eventhandler(object):
         
         # Spawnprotection
         player.player.godmode(1)
+        gamethread.delayed(0.1, player.player.setColor, (0, 0, 255, 125))
         gamethread.delayed(config.GetFloat('rpgSpawnprotection'), player.player.godmode, 0)
+        gamethread.delayed(config.GetFloat('rpgSpawnprotection'), player.player.setColor, player.properties['color'])
           
           
     def OnPlayerHurt(self, ev):
@@ -1688,7 +1964,9 @@ class Eventhandler(object):
             if attacker.GetLevel() > victim.GetLevel():      
                 xp = int(config.GetFloat('rpgGainXPDmg') / 100 * int(ev['dmg_health']))
             else:
-                xp = int((victim.GetLevel() / float(attacker.GetLevel())) * config.GetFloat('rpgGainXPDmg') / 100 * int(ev['dmg_health']))         
+                xp = int((victim.GetLevel() / float(attacker.GetLevel())) * config.GetFloat('rpgGainXPDmg') / 100 * int(ev['dmg_health']))
+            if es.isbot(ev['userid']):
+                xp = int(xp * config.GetFloat('rpgGainXPBotAmount'))         
             attacker.RaiseXP(xp)
             self.xpGaining[attacker.userid] += xp
         
@@ -1705,14 +1983,32 @@ class Eventhandler(object):
             if attacker.GetLevel() > victim.GetLevel():      
                 xp = int(config.GetFloat('rpgGainXPKill') * headshotMulti)
             else:
-                xp = int((victim.GetLevel() / float(attacker.GetLevel())) * config.GetFloat('rpgGainXPKill') * headshotMulti)         
+                xp = int((victim.GetLevel() / float(attacker.GetLevel())) * config.GetFloat('rpgGainXPKill') * headshotMulti) 
+            if es.isbot(ev['userid']):
+                xp = int(xp * config.GetFloat('rpgGainXPBotAmount'))        
             attacker.RaiseXP(xp)
             self.xpGaining[attacker.userid] += xp
+            
+        # If deathmatch, show their advantages in this life and save the player
+        if config.GetBool('rpgDeathmatch'):
+            #try:
+            victimLanguage = victim.language
+            level = victim.GetLevel()
+            tell(userid, language.GetLanguage('xp_gaining', victimLanguage, {'xp' : self.xpGaining[userid]}))
+            if level == self.levelGaining[userid]:
+                tell(userid, language.GetLanguage('no_levelup', victimLanguage, {'level' : level})) 
+            else:            
+                tell(userid, language.GetLanguage('levelup', victimLanguage, {'level' : level})) 
+                                
+            del self.xpGaining[userid]
+            del self.levelGaining[userid] 
+               
+            saving.Store(victim)                              
             
         # Show announcement for premium
         if not victim.premium: 
             gamethread.delayed(1.5, tell, (userid, language.GetLanguage('premium', victim.language))) 
-           
+                      
             
     def OnBombPlanted(self, ev):
         # Add XP
@@ -1739,27 +2035,41 @@ class Eventhandler(object):
         
         
     def OnRoundStart(self, ev):
+        # We need a loop for saving the data (when we use deathmatch) 
+        if config.GetBool('rpgDeathmatch'):
+            gamethread.delayedname(60, 'rpgDeathmatchLoop', eventhandler.DeathmatchLoop, ())
         update, version = internet.UpdateAvailable()
         if update:
             msg('A new version (%s) is available' %(version))
-            msg('Download at: www.nem-rpg.com') 
+            msg('Download at: www.meow-rpg.com')
+        if config.GetBool('rpgAdvertise'):
+            self.advertiseCounter += 1
+            if config.GetInt('rpgAdvertise') == self.advertiseCounter:
+                for i in playerlist.GetPlayerlist():
+                    tell(i.userid, language.GetLanguage('advertise', i.language, {'rpgmenu' : config.GetString('rpgSayMainMenu'), 'rpghelp' : config.GetString('rpgSayHelpMenu')}))
+                self.advertiseCounter = 0
             
             
     def OnRoundEnd(self, ev):
-        # Show the gainings and add them to the ranking
+        # End the saving loop
+        if config.GetBool('rpgDeathmatch'):
+            gamethread.cancelDelayed('rpgDeathmatchLoop')
+            
+        # Show the gainings and add them to the ranking        
         for i in playerlist.GetPlayerlist():
             try:
                 userid = i.userid
                 currentLanguage = i.language
                 level = i.GetLevel()
                 
-                tell(userid, language.GetLanguage('xp_gaining', currentLanguage, {'xp' : self.xpGaining[userid]}))
+                if i.premium:
+                    tell(userid, language.GetLanguage('xp_gaining', currentLanguage, {'xp' : self.xpGaining[userid]*2}))
+                else:
+                    tell(userid, language.GetLanguage('xp_gaining', currentLanguage, {'xp' : self.xpGaining[userid]}))
                 if level == self.levelGaining[userid]:
                     tell(userid, language.GetLanguage('no_levelup', currentLanguage, {'level' : level})) 
                 else:            
                     tell(userid, language.GetLanguage('levelup', currentLanguage, {'level' : level})) 
-                    
-                ranking.UpdatePlayer(i.steamid, es.getplayername(userid), i.GetTotalXP(), level)  
             except:
                 pass                                
                 
@@ -1767,30 +2077,36 @@ class Eventhandler(object):
         self.xpGaining.clear()  
         self.levelGaining.clear()
         
-        # Update ranking and save it
-        ranking.Update()
-        ranking.Store()
-        
         # Store all players (experimental!)
         for i in playerlist.GetPlayerlist(): 
-            saving.Store(i)  
+            saving.Store(i) 
+        saving.Commit() 
         
             
     def OnMapStart(self, ev):
         if not internet.IsConnected():
             internet.Connect()
-        internet.RegisterServer() 
-        internet.CheckVersion()              
+        gamethread.delayed(1, internet.RegisterServer, ())  
+        internet.CheckVersion()     
+        
+    
+    def DeathmatchLoop(self):
+        # A loop for deathmatch
+        gamethread.cancelDelayed('rpgDeathmatchLoop')
+        gamethread.delayedname(60, 'rpgDeathmatchLoop', eventhandler.DeathmatchLoop, ())
+        saving.Commit()
+                 
         
         
 # CommandHandler (provides a handing for say and cmd commands)
 class Commandhandler(object):
     # Events
     def Load(self):
-        cmdlib.registerServerCommand('rpg_version', self.OnVersion, 'Return the version of MEOW-RPG')
-        cmdlib.registerServerCommand('rpg_load', self.OnLoad, 'Load a MEOW-RPG skill')
-        cmdlib.registerServerCommand('rpg_unload', self.OnUnload, 'Unload a MEOW-RPG skill') 
-        cmdlib.registerServerCommand('rpg_skills', self.OnSkills, 'Print all the MEOW-RPG skills')
+        cmdlib.registerServerCommand('rpg_version', self.OnVersion, 'Return the version of Meow RPG')
+        cmdlib.registerServerCommand('rpg_load', self.OnLoad, 'Load a Meow RPG skill')
+        cmdlib.registerServerCommand('rpg_unload', self.OnUnload, 'Unload a Meow RPG skill')       
+        cmdlib.registerServerCommand('rpg_skills', self.OnSkills, 'Print all the Meow RPG skills')
+        cmdlib.registerServerCommand('rpg_debug', self.OnDebug, 'Debug the Meow RPG savings') 
          
         
     def Unload(self):
@@ -1798,33 +2114,36 @@ class Commandhandler(object):
         cmdlib.unregisterServerCommand('rpg_load')
         cmdlib.unregisterServerCommand('rpg_unload')
         cmdlib.unregisterServerCommand('rpg_skills') 
+        cmdlib.unregisterServerCommand('rpg_debug')
 
 
     def OnPlayerSay(self, ev):
         userid = int(ev['userid'])
         player = playerlist[userid]
+        text = ev['text'].lower()
         # Menus
-        if ev['text'] == config.GetString('rpgSayMainMenu'):
+        if text in config.GetList('rpgSayMainMenu'):
             player.mainPopup.Send()       
-        elif ev['text'] == config.GetString('rpgSayInfoMenu'):
+        elif text in config.GetList('rpgSayInfoMenu'):
             player.infoPopup.Send()
-        elif ev['text'] == config.GetString('rpgSaySettingsMenu'):
+        elif text in config.GetList('rpgSaySettingsMenu'):
             player.settingsPopup.Send()
+        elif text in config.GetList('rpgSayHelpMenu'):
+            player.helpPopup.Send()
         # XP Status      
-        elif ev['text'] == config.GetString('rpgSayFastXP'):       
+        elif text in config.GetList('rpgSayFastXP'):       
             tell(userid, language.GetLanguage('level_status', player.language, {'level' : player.GetLevel()}))
             tell(userid, language.GetLanguage('xp_status', player.language, {'currentXP' : player.xp, 'nextXP' : player.nextLevelXP})) 
         #Ranks         
-        elif ev['text'] == config.GetString('rpgSayRankMenu'):
+        elif text in config.GetList('rpgSayRankMenu'):
             ranking.SendPopup(userid)            
-        elif ev['text'] == config.GetString('rpgSayRankOwn'):
-            place = ranking.GetPlace(player.steamid) 
+        elif text in config.GetList('rpgSayRankOwn'):
+            data = ranking.GetPlace(player.steamid)             
             name = es.getplayername(userid)
-            if place != None:
-                details = ranking.GetDetails(place)
-                xp = details.xp
-                level = details.level
-                
+            if data != None:
+                place = data[0]
+                xp = data[1]
+                level = data[2]                
                 tell(userid, language.GetLanguage('self_rank', player.language, {'place' : place, 'xp' : xp, 'level' : level}))   
                 for i in playerlist.GetPlayerlist():
                     if i.userid != userid:
@@ -1834,29 +2153,29 @@ class Commandhandler(object):
                 for i in playerlist.GetPlayerlist():
                     if i.userid != userid:
                         tell(i.userid, language.GetLanguage('other_no_rank', i.language, {'name' : name}))
-        elif ev['text'].startswith(config.GetString('rpgSayRankOwn')):
+        elif True in [text.startswith(i) for i in config.GetList('rpgSayRankOwn')]:
             args = ev['text'].split(' ')
             if len(args) != 2:
-                tell(userid, language.GetLanguage('wrong_rank', player.language, {'command' : config.GetString('rpgSayRankOwn')}))
+                tell(userid, language.GetLanguage('wrong_rank', player.language, {'command' : config.GetList('rpgSayRankOwn')[0]}))
             else:
                 name = args[1].lower()
                 found = False
                 for i in playerlist.GetPlayerlist():
                    if name in es.getplayername(i.userid).lower():
-                        found = True
+                        found = True                       
+                        data = ranking.GetPlace(i.steamid)      
+                        if data != None: 
+                            place = data[0]
+                            xp = data[1]
+                            level = data[2]
+                            name = data[3]
                         
-                        place = ranking.GetPlace(i.steamid)
-                        details = ranking.GetDetails(place)
-                        name = es.getplayername(i.userid)                         
-                        xp = details.xp
-                        level = details.level
-                        
-                        for j in playerlist.GetPlayerlist(): 
-                            tell(j.userid, language.GetLanguage('other_rank', j.language, {'name' : name, 'place' : place, 'xp' : xp, 'level' : level})) 
+                            for j in playerlist.GetPlayerlist(): 
+                                tell(j.userid, language.GetLanguage('other_rank', j.language, {'name' : base64.decodestring(name), 'place' : place, 'xp' : xp, 'level' : level}))  
                 if not found:
                     tell(ev['userid'], language.GetLanguage('no_rank_found', player.language))                        
-        elif ev['text'] == config.GetString('rpgSayAdminMenu'):
-            if player.steamid in config.GetString('rpgAdmins'):
+        elif text in config.GetList('rpgSayAdminMenu'):
+            if player.steamid in config.GetList('rpgAdmins'):
                 adminPopup.Send(userid)  
             else:
                 tell(userid, language.GetLanguage('not_authorized', player.language))                           
@@ -1878,11 +2197,19 @@ class Commandhandler(object):
         if len(args) != 1:
             dbg('Syntax: rpg_unload <skillname>') 
         else:
-            dbg(skillhandler.Unload(args[0]))       
+            dbg(skillhandler.Unload(args[0]))
             
             
     def OnSkills(self, args):
         dbg('Skills: %s' %(', '.join(skillhandler.skills.keys())))   
+        
+    
+    def OnDebug(self, args):
+        # Debug the savings of Meow RPG
+        # Especially the ranking
+        dbg('Debugging ...') 
+        saving.Debug()
+        dbg('Debugging successfull') 
         
     
     # Client-Command
@@ -1946,16 +2273,20 @@ class Commandhandler(object):
         
 # Messages      
 def msg(text):
-    es.msg('#multi', '#green[MEOW-RPG]#default %s' %(text))
+    '''Display a text to all players (like es.msg, but with a prefix for Meow RPG).'''   
+    es.msg('#multi', '#green[Meow RPG]#default %s' %(text))
     
 def tell(userid, text):
-    es.tell(userid, '#multi', '#green[MEOW-RPG]#default %s' %(text))
+    '''Display a text to the player related to the userid (like es.tell, but with a prefix for Meow RPG).'''   
+    es.tell(userid, '#multi', '#green[Meow RPG]#default %s' %(text))
     
 def dbg(text):
-    es.dbgmsg(0, '[MEOW-RPG] %s' %(text))
+    '''Display a text in the console of the server (like es.dbgmsg, but with a prefix for Meow RPG).'''   
+    es.dbgmsg(0, '[Meow RPG] %s' %(text))
     
 def echo(userid, text):
-    usermsg.echo(userid, '[MEOW-RPG] %s' %(text))        
+    '''Display a text in the console of the player related to the userid (like usermsg.echo, but with a prefix for Meow RPG).'''   
+    usermsg.echo(userid, '[Meow RPG] %s' %(text))           
 
 
 
@@ -1965,8 +2296,8 @@ def echo(userid, text):
 #                             #
 ############################### 
 
+
 # Load load, config and language
-#log = Log(os.path.join(configPath, 'log'))
 config = Config(configPath)             
 language = Language(os.path.join(pluginPath, 'Includes'))
 
@@ -1974,7 +2305,7 @@ language = Language(os.path.join(pluginPath, 'Includes'))
 internet = Internet()
 
 # Ranking
-ranking = Ranking(os.path.join(pluginPath, 'Saving/Ranking.rpg'))
+ranking = Ranking()
 
 # Saving and playerlist
 saving = Saving(os.path.join(pluginPath, 'Saving/Saving.rpg'))
@@ -1997,22 +2328,32 @@ adminPopup = AdminPopup()
 ###############################      
    
 # ES-Events
-def load():
+def load():     
     # Load rpg events
-    es.loadevents('declare', 'addons/eventscripts/rpg/Includes/rpg_events.res')
+    es.loadevents('declare', 'addons/eventscripts/meowrpg/Includes/rpg_events.res')    
+    es.loadevents('addons/eventscripts/meowrpg/Includes/rpg_events.res') 
     
     # Register client filter
-    es.regclientcmd('rpg', 'rpg/ClientFilter', 'All RPG Console commands')
+    es.regclientcmd('rpg', 'meowrpg/ClientFilter', 'All RPG Console commands')    
     
     # Load default properties
-    Player.LoadDefaultProperties(os.path.join(pluginPath, 'Includes/properties.res'))
+    Player.LoadDefaultProperties(os.path.join(pluginPath, 'Includes/properties.res'))       
 
     # Load important things
     skillhandler.LoadAll()
     commandhandler.Load()
-    internet.RegisterServer() 
+    gamethread.delayed(1, internet.RegisterServer, ()) 
+    
+    # Add all existing players
+    for i in es.getUseridList():
+        playerlist.Add(i)
+    
     
 def unload():
+    # Stop deathmatch loop
+    if config.GetBool('rpgDeathmatch'):
+        gamethread.cancelDelayed('rpgDeathmatchLoop')
+    
     # Delete admin popup
     adminPopup.Delete()
 
@@ -2023,11 +2364,11 @@ def unload():
     internet.Close()
     commandhandler.Unload()  
     skillhandler.UnloadAll() 
-    saving.Close()
-    #log.Close()   
+    saving.Close() 
     
 # Server-Events
-def es_map_start(ev):       
+def es_map_start(ev):  
+    es.loadevents('addons/eventscripts/meowrpg/Includes/rpg_events.res')     
     eventhandler.OnMapStart(ev)
     playerlist.Clear()   
     
@@ -2037,7 +2378,6 @@ def server_shutdown(ev):
     commandhandler.Unload()  
     skillhandler.UnloadAll() 
     saving.Close()
-    #log.Close()   
 
 # Player-Events
 def player_activate(ev):
@@ -2052,7 +2392,21 @@ def player_say(ev):
     commandhandler.OnPlayerSay(ev)
             
 def player_spawn(ev):      
-    eventhandler.OnPlayerSpawn(ev)  
+    if playerlist.Exists(ev['userid']):
+        eventhandler.OnPlayerSpawn(ev) 
+        
+        # We have to execute the custon spawn event
+        es.event('initialize', 'rpg_player_spawn')
+        es.event('setstring', 'rpg_player_spawn', 'userid', ev['userid']) 
+        es.event('setstring', 'rpg_player_spawn', 'es_username', ev['es_username']) 
+        es.event('setstring', 'rpg_player_spawn', 'es_steamid', ev['es_steamid']) 
+        es.event('setstring', 'rpg_player_spawn', 'es_userteam', ev['es_userteam']) 
+        es.event('setstring', 'rpg_player_spawn', 'es_userhealth', ev['es_userhealth']) 
+        es.event('setstring', 'rpg_player_spawn', 'es_userarmor', ev['es_userarmor']) 
+        es.event('setstring', 'rpg_player_spawn', 'es_userdeaths', ev['es_userdeaths']) 
+        es.event('setstring', 'rpg_player_spawn', 'es_userkills', ev['es_userkills']) 
+        es.event('fire', 'rpg_player_spawn')      
+        
             
 def player_hurt(ev):
     eventhandler.OnPlayerHurt(ev)  

@@ -1,4 +1,4 @@
-# Impulse-Skill by Rennnyyy
+# Impulse-Skill by *meow*
 #
 # Version 1.0
 
@@ -6,20 +6,29 @@
 # Imports
 
 # ES-Imports
+import weaponlib
 import gamethread
 
 # RPG-Imports
-from rpg.rpg import playerlist, skillhandler
+from meowrpg import playerlist, skillhandler, config
+
 
 
 # Script
 skillname = 'Impulse'
 
 
+# Load config values
+rpgImpulseSpeed = config.GetFloat('rpgImpulseSpeed') 
+rpgImpulseAmmo = config.GetInt('rpgImpulseAmmo')
+rpgImpulseActiveOnly = config.GetBool('rpgImpulseActiveOnly')
+
+
+# Events    
 def unload():
     for i in playerlist.GetPlayerlist():
         gamethread.cancelDelayed('rpg_%s_%s' %(skillname, i.userid))
-        rpg_repulse(i)
+        rpg_repulse(i.userid)
 
 
 def player_hurt(ev):
@@ -28,18 +37,31 @@ def player_hurt(ev):
         userid = int(ev['userid'])   
         player = playerlist[userid]
         level = player.GetSkillLevel(skillname)
-        player = player.player
         # Set speed
-        player.setSpeed(1 + 0.2 * level)
+        player.player.setSpeed(player.properties['speed'] + rpgImpulseSpeed * level)
+        player = player.player
         # Set ammo
-        try:
-            player.setPrimaryClip(int(player.getClip('1')) + level)
-        except:
-            pass
-        try:   
-            player.setSecondaryClip(int(player.getClip('2')) + level)
-        except:
-            pass 
+        if rpgImpulseActiveOnly:
+            activeWeapon = es.entitygetvalue(es.getindexfromhandle(es.getplayerprop(userid, "CBasePlayer.baseclass.m_hActiveWeapon")), "classname")
+            if activeWeapon in weaponlib.getWeaponList('#primary'):
+                try:
+                    player.setPrimaryClip(int(player.getClip('1')) + level * rpgImpulseAmmo)
+                except:
+                    pass 
+            elif activeWeapon in weaponlib.getWeaponList('#secondary'): 
+                try:   
+                    player.setSecondaryClip(int(player.getClip('2')) + level * rpgImpulseAmmo)
+                except:
+                    pass      
+        else:
+            try:
+                player.setPrimaryClip(int(player.getClip('1')) + level * rpgImpulseAmmo)
+            except:
+                pass
+            try:   
+                player.setSecondaryClip(int(player.getClip('2')) + level * rpgImpulseAmmo)
+            except:
+                pass 
         # Delay
         delayname = 'rpg_%s_%s' %(skillname, userid)
         gamethread.cancelDelayed(delayname)
@@ -55,4 +77,5 @@ def player_disconnect(ev):
         
                 
 def rpg_repulse(userid):
-    playerlist[userid].player.setSpeed(1)  
+    player = playerlist[userid]
+    player.player.setSpeed(player.properties['speed'])  

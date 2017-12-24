@@ -1,4 +1,4 @@
-# Stealth-Skill by Rennnyyy
+# Stunnade-Skill by *meow*
 #
 # Version 1.0
 
@@ -9,28 +9,36 @@
 import es
 
 # RPG-Imports
-from rpg.rpg import playerlist
+from meowrpg import playerlist, config
+
 
 
 # Script
 skillname = 'Stunnade'
 
 
+# Load config values
+rpgStunnadeTime = config.GetInt('rpgStunnadeTime')
+rpgStunnadePower = config.GetInt('rpgStunnadePower')
+
+
+# Global variables
 stun = []
 
 
+# Events
 def player_blind(ev):
     stun.append(ev['userid'])
-    playerlist[ev['userid']].player.flash(0, 0)
    
    
-def flashbang_detonate(ev):  
+def flashbang_detonate(ev):    
     level = playerlist[ev['userid']].GetSkillLevel(skillname)
     team = 5 - int(ev['es_userteam'])      
     if level > 0:
-        time = level * 2
-        power = level * 100
+        time = level * rpgStunnadeTime
+        power = level * rpgStunnadePower
         for i in stun:
+            playerlist[i].player.flash(0,0)
             if int(es.getplayerteam(i)) == team:
                 es.usermsg('create', 'shake', 'Shake')
                 es.usermsg('write',  'byte',  'shake', 0)

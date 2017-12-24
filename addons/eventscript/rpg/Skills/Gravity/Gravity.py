@@ -1,4 +1,4 @@
-# Gravity-Skill by Rennnyyy
+# Gravity-Skill by *meow*
 #
 # Version 1.0
 
@@ -9,32 +9,29 @@
 import es
 
 # RPG-Imports
-from rpg.rpg import playerlist
+from meowrpg import playerlist, config
+
 
 
 # Script
 skillname = 'Gravity'
 
 
-def load():
-    es.loadevents('declare', 'addons/eventscripts/rpg/Includes/rpg_events.res')
-    es.loadevents('addons/eventscripts/rpg/Includes/rpg_events.res') 
+# Load config values
+rpgGravityValue = config.GetFloat('rpgGravityValue') 
 
 
+# Events
 def unload():
     for i in playerlist.GetPlayerlist():
-        es.server.queuecmd('es_fire %s !self addoutput "gravity 1"' %(i.userid))  
+        es.server.queuecmd('es_fire %s !self addoutput "gravity 1"' %(i.userid))   
         
         
-def es_map_start(ev):
-    es.loadevents('addons/eventscripts/rpg/Includes/rpg_events.res')    
-        
-        
-def player_spawn(ev):
+def rpg_player_spawn(ev):
     player = playerlist[ev['userid']]
-    es.server.queuecmd('es_fire %s !self addoutput "gravity %s"' %(player.userid, 1 - player.GetSkillLevel(skillname) * 0.05))   
+    es.server.queuecmd('es_fire %s !self addoutput "gravity %s"' %(player.userid, 1 - player.GetSkillLevel(skillname) * rpgGravityValue))   
     
 
 def rpg_skill_level_changed(ev):
     if ev['skill'] == skillname:
-        es.server.queuecmd('es_fire %s !self addoutput "gravity %s"' %(ev['userid'], 1 - int(ev['level']) * 0.05))          
+        es.server.queuecmd('es_fire %s !self addoutput "gravity %s"' %(ev['userid'], 1 - int(ev['level']) * rpgGravityValue))          

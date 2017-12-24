@@ -1,4 +1,4 @@
-# Respawn-Skill by Rennnyyy
+# Respawn-Skill by *meow*
 #
 # Version 1.0
 
@@ -13,13 +13,19 @@ import es
 import gamethread
 
 # RPG-Imports
-from rpg.rpg import playerlist
+from meowrpg import playerlist, config
+
 
 
 # Script
 skillname = 'Respawn'
 
 
+# Load config values
+rpgRespawnChance = config.GetInt('rpgRespawnChance')
+
+
+# Events
 def load():
     global allowed
     allowed = False
@@ -39,7 +45,7 @@ def player_death(ev):
     userid = int(ev['userid'])
     level = playerlist[userid].GetSkillLevel(skillname)
     if allowed and level > 0:
-        if random.randint(1,100) <= level * 5:
+        if random.randint(1,100) <= level * rpgRespawnChance:
             gamethread.delayed(1, rpg_respawn, (userid))
         
         

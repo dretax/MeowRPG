@@ -1,4 +1,4 @@
-# Denial-Skill by Rennnyyy
+# Denial-Skill by *meow*
 #
 # Version 1.0
 
@@ -12,7 +12,7 @@ import gamethread
 import weaponlib
 
 # RPG-Imports
-from rpg.rpg import playerlist
+from meowrpg import playerlist
 
 
 # Script
@@ -25,14 +25,20 @@ allowChange = []
 
 
 def load():
-    es.addons.registerClientCommandFilter(clientFilter)
+    es.ServerVar('eventscripts_noisy').set('1')
+    es.addons.registerClientCommandFilter(clientFilter)     
     
     
 def unload():
     es.addons.unregisterClientCommandFilter(clientFilter)
     
+    
+def es_map_start(ev):
+    weaponList.clear()
+    del allowChange[:] 
+    
 
-def player_spawn(ev):
+def rpg_player_spawn(ev):
     userid = int(ev['userid'])
     player = playerlist[userid]
     level = player.GetSkillLevel(skillname) 
@@ -78,8 +84,6 @@ def player_spawn(ev):
     
         
 def round_end(ev):
-    for i in playerlib.getUseridList('#alive'):
-        del weaponList[int(i)]
     del allowChange[:]
     
     
